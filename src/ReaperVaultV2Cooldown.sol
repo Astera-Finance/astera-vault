@@ -14,13 +14,26 @@ import {ERC20} from "oz/token/ERC20/ERC20.sol";
 import {IERC20Metadata} from "oz/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "oz/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "oz/utils/math/Math.sol";
+import {ReaperERC721WithdrawCooldown} from "./ReaperERC721WithdrawCooldown.sol";
+import {IERC721} from "oz/token/ERC721/IERC721.sol";
+import {IERC721Metadata} from "oz/token/ERC721/extensions/IERC721Metadata.sol";
 
 /**
  * @notice Implementation of a vault to deposit funds for yield optimizing.
  * This is the contract that receives funds and that users interface with.
  * The yield optimizing strategy itself is implemented in a separate 'Strategy.sol' contract.
+ * 
+ * @dev This contract is a fork of ReaperVaultV2 with a cooldown mechanism added.
+ * The cooldown mechanism is implemented using an ERC721 token that is minted when a user deposits funds.
+ * The token is burned when a user withdraws funds.
+ * The token is used to track the cooldown period for each user.
+ * 
+ * @dev ABI changes:
+ * - From `withdraw(uint256 _shares)` to `withdraw(uint256 _reaperERC721WithdrawCooldownId)`
+ * - New `initiateWithdraw(uint256 _shares)` function to initiate a withdraw and mint the ERC721 token.
+ * - `withdrawAll()` now burn all the ERC721 tokens of the user and withdraw the underlying assets.
  */
-contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessControlEnumerable, ReentrancyGuard {
+contract ReaperVaultV2Cooldown is ReaperAccessControl, ERC20, IERC4626Events, AccessControlEnumerable, ReentrancyGuard {
     using ReaperMathUtils for uint256;
     using SafeERC20 for IERC20Metadata;
 
@@ -64,6 +77,8 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
     uint256 public lockedProfit; // how much profit is locked and cant be withdrawn
 
     address public treasury; // address to whom performance fee is remitted in the form of vault shares
+
+    ReaperERC721WithdrawCooldown public withdrawCooldownNft; // ERC721 token to track withdraw cooldown
 
     event StrategyAdded(address indexed strategy, uint256 feeBPS, uint256 allocBPS);
     event StrategyFeeBPSUpdated(address indexed strategy, uint256 feeBPS);
@@ -117,6 +132,9 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
         lockedProfitDegradation = (DEGRADATION_COEFFICIENT * 46) / 10 ** 6; // 6 hours in blocks
 
         feeController = IFeeController(_feeController);
+        
+        withdrawCooldownNft = new ReaperERC721WithdrawCooldown(address(this));
+
         uint256 numStrategists = _strategists.length;
         for (uint256 i = 0; i < numStrategists; i = i.uncheckedInc()) {
             _grantRole(STRATEGIST, _strategists[i]);
@@ -702,4 +720,12 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
     function _validateFeeCapValue(uint256 _feeCapBPS) internal pure {
         require(_feeCapBPS <= PERCENT_DIVISOR, "Fee cannot exceed 10_000 BPS(100%)");
     }
+
+    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
+        return
+            interfaceId == type(IERC721).interfaceId ||
+            interfaceId == type(IERC721Metadata).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
 }
