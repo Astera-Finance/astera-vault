@@ -89,7 +89,7 @@ contract ReaperFeeControllerTest is Test {
             vm.expectRevert("Unauthorized access");
 
             vm.startPrank(unauthorizedUsers[i]);
-            sut.upgradeTo(address(sutV2));
+            sut.upgradeToAndCall(address(sutV2), new bytes(0));
         }
     }
 
@@ -105,7 +105,7 @@ contract ReaperFeeControllerTest is Test {
 
             skip(sut.upgradeUnlocksAt() + 10);
 
-            sut.upgradeTo(address(sutV2));
+            sut.upgradeToAndCall(address(sutV2), new bytes(0));
 
             string memory version = sutV2.version();
             assertEq("v2", version);

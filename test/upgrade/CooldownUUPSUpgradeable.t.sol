@@ -11,7 +11,7 @@ contract CooldownUUPSUpgradeableTest is Test {
     CooldownUUPSUpgradeableImpl private sut;
     uint256 internal constant MOCKED_BLOCK_TIMESTAMP = 1700000000;
 
-    event Initialized(uint8 version);
+    event Initialized(uint64 version);
     event UpgradeUnlocked(address newImplementation, uint256 upgradeUnlocksAt);
     event UpgradeLocked(uint256 upgradeUnlocksAt);
 
@@ -22,7 +22,7 @@ contract CooldownUUPSUpgradeableTest is Test {
 
     function testGivenChildContractWhenInstantiateThenDisablesInitialization() public {
         vm.expectEmit();
-        emit CooldownUUPSUpgradeableTest.Initialized(type(uint8).max);
+        emit CooldownUUPSUpgradeableTest.Initialized(type(uint64).max);
 
         _deployWithProxy();
     }
@@ -91,7 +91,7 @@ contract CooldownUUPSUpgradeableTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(errorSelector, sut.upgradeUnlocksAt()));
 
-        sut.upgradeTo(address(v2));
+        sut.upgradeToAndCall(address(v2), new bytes(0));
     }
 
     function testGivenWrongImplementationAddressWhenUpgradeThenRevertsWithError() public {
@@ -105,7 +105,7 @@ contract CooldownUUPSUpgradeableTest is Test {
         bytes4 errorSelector = bytes4(keccak256("InvalidNewImplementationAddress(address,address)"));
         vm.expectRevert(abi.encodeWithSelector(errorSelector, address(v2), invlaidImplementationAddr));
 
-        sut.upgradeTo(invlaidImplementationAddr);
+        sut.upgradeToAndCall(invlaidImplementationAddr, new bytes(0));
     }
 
     function testGivenCorrectInputWhenUpgradeThenUpgrades() public {
@@ -114,7 +114,7 @@ contract CooldownUUPSUpgradeableTest is Test {
         sut.unlockUpgrade(address(v2));
         skip(sut.upgradeUnlocksAt() + 10);
 
-        sut.upgradeTo(address(v2));
+        sut.upgradeToAndCall(address(v2), new bytes(0));
 
         string memory version = v2.version();
 

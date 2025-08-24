@@ -9,12 +9,12 @@ import {IVeloRouter} from "./interfaces/IVeloRouter.sol";
 import {ReaperMathUtils} from "./libraries/ReaperMathUtils.sol";
 import {ReaperAccessControl} from "./mixins/ReaperAccessControl.sol";
 import {KEEPER, STRATEGIST, GUARDIAN, ADMIN} from "./Roles.sol";
-import {
-    AccessControlEnumerableUpgradeable,
-    MathUpgradeable
-} from "oz-upgradeable/access/AccessControlEnumerableUpgradeable.sol";
+import {AccessControlEnumerableUpgradeable} from
+    "oz-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
+import {Math} from "oz/utils/math/Math.sol";
 import {UUPSUpgradeable} from "oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {SafeERC20Upgradeable, IERC20Upgradeable} from "oz-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import {SafeERC20} from "oz/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "oz/token/ERC20/IERC20.sol";
 
 abstract contract ReaperBaseStrategyv4 is
     ReaperAccessControl,
@@ -23,7 +23,7 @@ abstract contract ReaperBaseStrategyv4 is
     AccessControlEnumerableUpgradeable
 {
     using ReaperMathUtils for uint256;
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20 for IERC20;
 
     uint256 public constant PERCENT_DIVISOR = 10_000;
     uint256 public constant UPGRADE_TIMELOCK = 48 hours; // minimum 48 hours for RF
@@ -87,7 +87,7 @@ abstract contract ReaperBaseStrategyv4 is
         vault = _vault;
         swapper = ISwapper(_swapper);
         want = _want;
-        IERC20Upgradeable(want).safeApprove(vault, type(uint256).max);
+        IERC20(want).forceApprove(vault, type(uint256).max);
 
         uint256 numStrategists = _strategists.length;
         for (uint256 i = 0; i < numStrategists; i = i.uncheckedInc()) {
@@ -117,7 +117,7 @@ abstract contract ReaperBaseStrategyv4 is
 
         uint256 amountFreed = 0;
         (amountFreed, loss) = _liquidatePosition(_amount);
-        IERC20Upgradeable(want).safeTransfer(msg.sender, amountFreed);
+        IERC20(want).safeTransfer(msg.sender, amountFreed);
     }
 
     /**
@@ -164,7 +164,7 @@ abstract contract ReaperBaseStrategyv4 is
 
             uint256 allocated = IVault(vault).strategies(address(this)).allocated;
             uint256 totalAssets = _estimatedTotalAssets();
-            uint256 toFree = MathUpgradeable.min(debt, totalAssets);
+            uint256 toFree = Math.min(debt, totalAssets);
 
             if (totalAssets > allocated) {
                 uint256 profit = totalAssets - allocated;
@@ -175,7 +175,7 @@ abstract contract ReaperBaseStrategyv4 is
             }
 
             (uint256 amountFreed, uint256 loss) = _liquidatePosition(toFree);
-            repayment = MathUpgradeable.min(debt, amountFreed);
+            repayment = Math.min(debt, amountFreed);
             roi -= int256(loss);
         }
 
@@ -211,7 +211,7 @@ abstract contract ReaperBaseStrategyv4 is
      *      It only takes into account funds in hand.
      */
     function balanceOfWant() public view virtual returns (uint256) {
-        return IERC20Upgradeable(want).balanceOf(address(this));
+        return IERC20(want).balanceOf(address(this));
     }
 
     /**
@@ -458,13 +458,13 @@ abstract contract ReaperBaseStrategyv4 is
         uint256 numSteps = swapSteps.length;
         for (uint256 i = 0; i < numSteps; i = i.uncheckedInc()) {
             SwapStep storage step = swapSteps[i];
-            IERC20Upgradeable startToken = IERC20Upgradeable(step.start);
+            IERC20 startToken = IERC20(step.start);
             uint256 amount = startToken.balanceOf(address(this));
             if (amount == 0) {
                 continue;
             }
 
-            startToken.safeApprove(address(swapper), 0);
+            startToken.forceApprove(address(swapper), 0);
             startToken.safeIncreaseAllowance(address(swapper), amount);
             if (step.exType == ExchangeType.UniV2) {
                 swapper.swapUniV2(step.start, step.end, amount, step.minAmountOutData, step.exchangeAddress);

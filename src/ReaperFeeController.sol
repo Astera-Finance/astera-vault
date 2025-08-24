@@ -6,7 +6,8 @@ import {ReaperMathUtils} from "./libraries/ReaperMathUtils.sol";
 import {IFeeController} from "./interfaces/IFeeController.sol";
 import {ReaperAccessControl} from "./mixins/ReaperAccessControl.sol";
 import {CooldownUUPSUpgradeable} from "./mixins/upgrade/CooldownUUPSUpgradeable.sol";
-import {AccessControlEnumerableUpgradeable} from "oz-upgradeable/access/AccessControlEnumerableUpgradeable.sol";
+import {AccessControlEnumerableUpgradeable} from
+    "oz-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import {KEEPER, STRATEGIST, GUARDIAN, ADMIN} from "./Roles.sol";
 
 contract ReaperFeeController is
