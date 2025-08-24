@@ -2,6 +2,9 @@
 
 pragma solidity ^0.8.0;
 
+// TODO remove
+import {console2} from "forge-std/console2.sol";
+
 import {IERC4626Events} from "./interfaces/IERC4626Events.sol";
 import {IStrategy} from "./interfaces/IStrategy.sol";
 import {IFeeController} from "./interfaces/IFeeController.sol";
@@ -382,9 +385,11 @@ contract ReaperVaultV2Cooldown is
     function withdrawAll() external {
         uint256 nbTokens = withdrawCooldownNft.balanceOf(msg.sender);
         uint256 totalSharesToWithdraw;
+        uint256 nbNftBurnt;
 
         for (uint256 i = 0; i < nbTokens; i = i.uncheckedInc()) {
-            uint256 tokenId = withdrawCooldownNft.tokenOfOwnerByIndex(msg.sender, i);
+            console2.log("i", i);
+            uint256 tokenId = withdrawCooldownNft.tokenOfOwnerByIndex(msg.sender, i - nbNftBurnt);
             ReaperERC721WithdrawCooldown.WithdrawCooldownInfo memory cooldownInfo =
                 withdrawCooldownNft.getCooldownInfo(tokenId);
 
@@ -392,6 +397,7 @@ contract ReaperVaultV2Cooldown is
             if (cooldownInfo.mintingTimestamp + cooldownPeriod <= block.timestamp) {
                 withdrawCooldownNft.burn(tokenId);
                 totalSharesToWithdraw += cooldownInfo.sharesToWithdraw;
+                nbNftBurnt++;
             }
         }
 

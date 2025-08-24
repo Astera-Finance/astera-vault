@@ -3,7 +3,6 @@
 pragma solidity ^0.8.0;
 
 import {ERC721} from "oz/token/ERC721/ERC721.sol";
-import {ERC721Burnable} from "oz/token/ERC721/extensions/ERC721Burnable.sol";
 import {ERC721Enumerable} from "oz/token/ERC721/extensions/ERC721Enumerable.sol";
 import {Ownable} from "oz/access/Ownable.sol";
 
@@ -12,7 +11,7 @@ import {Ownable} from "oz/access/Ownable.sol";
  * @dev This contract is deployed in the constructor by `ReaperVaultV2Cooldown`.
  * The `ReaperVaultV2Cooldown` contract is the owner of this contract.
  */
-contract ReaperERC721WithdrawCooldown is ERC721, ERC721Enumerable, ERC721Burnable, Ownable {
+contract ReaperERC721WithdrawCooldown is ERC721, ERC721Enumerable, Ownable {
     /// State variables
     uint256 private _nextTokenId;
     mapping(uint256 _tokenId => WithdrawCooldownInfo) public cooldownInfo;
@@ -51,9 +50,9 @@ contract ReaperERC721WithdrawCooldown is ERC721, ERC721Enumerable, ERC721Burnabl
      * @dev Can only be called by the owner (ReaperVaultV2Cooldown)
      * @param tokenId_ The ID of the NFT to burn
      */
-    function burn(uint256 tokenId_) public override onlyOwner {
+    function burn(uint256 tokenId_) public onlyOwner {
         delete cooldownInfo[tokenId_];
-        super.burn(tokenId_);
+        _burn(tokenId_);
         emit WithdrawCooldownBurned(tokenId_);
     }
 
