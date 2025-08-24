@@ -2,9 +2,6 @@
 
 pragma solidity ^0.8.0;
 
-// TODO remove
-import {console2} from "forge-std/console2.sol";
-
 import {IERC4626Events} from "./interfaces/IERC4626Events.sol";
 import {IStrategy} from "./interfaces/IStrategy.sol";
 import {IFeeController} from "./interfaces/IFeeController.sol";
@@ -385,23 +382,27 @@ contract ReaperVaultV2Cooldown is
     function withdrawAll() external {
         uint256 nbTokens = withdrawCooldownNft.balanceOf(msg.sender);
         uint256 totalSharesToWithdraw;
-        uint256 nbNftBurnt;
+        uint256[] memory idToBurn = new uint256[](nbTokens + 1);
+        uint256 i;
 
-        for (uint256 i = 0; i < nbTokens; i = i.uncheckedInc()) {
-            console2.log("i", i);
-            uint256 tokenId = withdrawCooldownNft.tokenOfOwnerByIndex(msg.sender, i - nbNftBurnt);
+        for (i = 0; i < nbTokens; i = i.uncheckedInc()) {
+            uint256 tokenId = withdrawCooldownNft.tokenOfOwnerByIndex(msg.sender, i);
             ReaperERC721WithdrawCooldown.WithdrawCooldownInfo memory cooldownInfo =
                 withdrawCooldownNft.getCooldownInfo(tokenId);
-
-            // If the cooldown period has ended, burn the token and add the shares to the total shares to withdraw.
             if (cooldownInfo.mintingTimestamp + cooldownPeriod <= block.timestamp) {
-                withdrawCooldownNft.burn(tokenId);
+                idToBurn[i] = tokenId;
                 totalSharesToWithdraw += cooldownInfo.sharesToWithdraw;
-                nbNftBurnt++;
             }
         }
 
         require(totalSharesToWithdraw != 0, "No shares to withdraw");
+        idToBurn[i] = type(uint256).max; // Flag the end of the array.
+
+        // Burn tokens in a different loop to maintain tokenOfOwnerByIndex invariant.
+        uint256 j;
+        while (idToBurn[j] != type(uint256).max) {
+            withdrawCooldownNft.burn(idToBurn[j++]);
+        }
 
         _withdraw(totalSharesToWithdraw, msg.sender, address(withdrawCooldownNft));
     }
