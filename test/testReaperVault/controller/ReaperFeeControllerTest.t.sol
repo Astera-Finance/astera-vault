@@ -2,9 +2,9 @@
 
 pragma solidity ^0.8.0;
 
-import {ReaperFeeController} from "../../src/ReaperFeeController.sol";
+import {ReaperFeeController} from "../../../src/ReaperFeeController.sol";
 import {ReaperFeeControllerV2} from "./ReaperFeeControllerV2.sol";
-import {KEEPER, STRATEGIST, GUARDIAN, ADMIN} from "../../src/Roles.sol";
+import {KEEPER, STRATEGIST, GUARDIAN, ADMIN} from "../../../src/Roles.sol";
 import {ERC1967Proxy} from "oz/proxy/ERC1967/ERC1967Proxy.sol";
 import {Test} from "forge-std/Test.sol";
 
