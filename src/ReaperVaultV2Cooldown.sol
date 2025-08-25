@@ -784,9 +784,4 @@ contract ReaperVaultV2Cooldown is
     function _validateFeeCapValue(uint256 _feeCapBPS) internal pure {
         require(_feeCapBPS <= PERCENT_DIVISOR, "Fee cannot exceed 10_000 BPS(100%)");
     }
-
-    function supportsInterface(bytes4 interfaceId) public view override returns (bool) {
-        return interfaceId == type(IERC721).interfaceId || interfaceId == type(IERC721Metadata).interfaceId
-            || super.supportsInterface(interfaceId);
-    }
 }
