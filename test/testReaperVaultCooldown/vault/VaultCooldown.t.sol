@@ -244,4 +244,104 @@ contract VaultCooldownTest is VaultBaseTest {
         // Ensure it actually changed from initial
         assertTrue(sut.cooldownPeriod() != initial);
     }
+
+    function testGetUserWithdrawCooldownInfoReturnsCorrectDataBeforeCooldown() public {
+        uint256 depositAmount = 100e18;
+        address user = makeAddr("infoUser");
+
+        deal(address(assetMock), user, depositAmount);
+
+        vm.startPrank(user);
+        assetMock.approve(address(sut), depositAmount);
+        sut.deposit(depositAmount);
+
+        // Create two cooldown NFTs
+        sut.initiateWithdraw(40e18);
+        sut.initiateWithdraw(10e18);
+
+        ReaperERC721WithdrawCooldown nft = sut.withdrawCooldownNft();
+        assertEq(nft.balanceOf(user), 2);
+
+        (
+            uint256 nbTokens,
+            uint256 amountWithdrawable,
+            uint256[] memory tokenIds,
+            uint256[] memory sharesToWithdraw,
+            uint256[] memory timeLeftBeforeWithdraw
+        ) = sut.getUserWithdrawCooldownInfo(user);
+
+        assertEq(nbTokens, 2);
+        assertEq(amountWithdrawable, 0);
+        assertEq(tokenIds.length, 2);
+        assertEq(sharesToWithdraw.length, 2);
+        assertEq(timeLeftBeforeWithdraw.length, 2);
+
+        uint256 id0 = nft.tokenOfOwnerByIndex(user, 0);
+        uint256 id1 = nft.tokenOfOwnerByIndex(user, 1);
+        assertEq(tokenIds[0], id0);
+        assertEq(tokenIds[1], id1);
+
+        // Shares match the amounts initiated in order
+        assertEq(sharesToWithdraw[0], 40e18);
+        assertEq(sharesToWithdraw[1], 10e18);
+
+        // Time left should be > 0 and <= cooldownPeriod at mint time
+        assertEq(timeLeftBeforeWithdraw[0], sut.cooldownPeriod());
+        assertEq(timeLeftBeforeWithdraw[1], sut.cooldownPeriod());
+
+        skip(100);
+        (nbTokens, amountWithdrawable, tokenIds, sharesToWithdraw, timeLeftBeforeWithdraw) =
+            sut.getUserWithdrawCooldownInfo(user);
+
+        assertEq(nbTokens, 2);
+        assertEq(amountWithdrawable, 0);
+        assertEq(tokenIds.length, 2);
+        assertEq(sharesToWithdraw.length, 2);
+        assertEq(timeLeftBeforeWithdraw.length, 2);
+        assertEq(sharesToWithdraw[0], 40e18);
+        assertEq(sharesToWithdraw[1], 10e18);
+        assertEq(timeLeftBeforeWithdraw[0], sut.cooldownPeriod() - 100);
+        assertEq(timeLeftBeforeWithdraw[1], sut.cooldownPeriod() - 100);
+
+        skip(sut.cooldownPeriod());
+        (nbTokens, amountWithdrawable, tokenIds, sharesToWithdraw, timeLeftBeforeWithdraw) =
+            sut.getUserWithdrawCooldownInfo(user);
+
+        assertEq(nbTokens, 2);
+        assertEq(amountWithdrawable, 50e18);
+        assertEq(tokenIds.length, 2);
+        assertEq(sharesToWithdraw.length, 2);
+        assertEq(timeLeftBeforeWithdraw.length, 2);
+        assertEq(sharesToWithdraw[0], 40e18);
+        assertEq(sharesToWithdraw[1], 10e18);
+        assertEq(timeLeftBeforeWithdraw[0], 0);
+        assertEq(timeLeftBeforeWithdraw[1], 0);
+
+        sut.withdraw(tokenIds[0]);
+
+        (nbTokens, amountWithdrawable, tokenIds, sharesToWithdraw, timeLeftBeforeWithdraw) =
+            sut.getUserWithdrawCooldownInfo(user);
+
+        assertEq(nbTokens, 1);
+        assertEq(amountWithdrawable, 10e18);
+        assertEq(tokenIds.length, 1);
+        assertEq(sharesToWithdraw.length, 1);
+        assertEq(timeLeftBeforeWithdraw.length, 1);
+        assertEq(sharesToWithdraw[0], 10e18);
+        assertEq(timeLeftBeforeWithdraw[0], 0);
+
+        sut.withdrawAll();
+
+        (nbTokens, amountWithdrawable, tokenIds, sharesToWithdraw, timeLeftBeforeWithdraw) =
+            sut.getUserWithdrawCooldownInfo(user);
+
+        assertEq(nbTokens, 0);
+        assertEq(amountWithdrawable, 0);
+
+        assertEq(tokenIds.length, 0);
+        assertEq(sharesToWithdraw.length, 0);
+        assertEq(timeLeftBeforeWithdraw.length, 0);
+
+        vm.stopPrank();
+    }
 }

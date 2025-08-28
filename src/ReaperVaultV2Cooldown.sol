@@ -399,10 +399,9 @@ contract ReaperVaultV2Cooldown is
         require(totalSharesToWithdraw != 0, "No shares to withdraw");
         idToBurn[i] = type(uint256).max; // Flag the end of the array.
 
-        // Burn tokens in a different loop to maintain tokenOfOwnerByIndex invariant.
-        uint256 j;
-        while (idToBurn[j] != type(uint256).max) {
-            withdrawCooldownNft.burn(idToBurn[j++]);
+        // Burn tokens in a different loop to maintain `tokenOfOwnerByIndex` unchanged.
+        for (uint256 j; idToBurn[j] != type(uint256).max; j = j.uncheckedInc()) {
+            withdrawCooldownNft.burn(idToBurn[j]);
         }
 
         _withdraw(totalSharesToWithdraw, msg.sender, address(withdrawCooldownNft));
@@ -424,6 +423,50 @@ contract ReaperVaultV2Cooldown is
 
         withdrawCooldownNft.burn(_reaperERC721WithdrawCooldownId);
         _withdraw(cooldownInfo.sharesToWithdraw, msg.sender, address(withdrawCooldownNft));
+    }
+
+    /**
+     * @notice Returns information about all withdraw cooldown tokens owned by a user
+     * @dev This function aggregates data from all ERC721 withdraw cooldown tokens owned by the user
+     * @param _user The address of the user to query
+     * @return nbTokens The number of withdraw cooldown tokens owned by the user
+     * @return amountWithdrawable The total amount of shares that can be withdrawn NOW for all tokens.
+     * @return tokenIds Array of token IDs owned by the user
+     * @return sharesToWithdraw Array of share amounts that can be withdrawn for each token
+     * @return timeLeftBeforeWithdraw Array of time remaining (in seconds) before each token can be withdrawn
+     *         Returns 0 if the cooldown period has already ended
+     */
+    function getUserWithdrawCooldownInfo(address _user)
+        external
+        view
+        returns (
+            uint256 nbTokens,
+            uint256 amountWithdrawable,
+            uint256[] memory tokenIds,
+            uint256[] memory sharesToWithdraw,
+            uint256[] memory timeLeftBeforeWithdraw
+        )
+    {
+        nbTokens = withdrawCooldownNft.balanceOf(_user);
+        tokenIds = new uint256[](nbTokens);
+        sharesToWithdraw = new uint256[](nbTokens);
+        timeLeftBeforeWithdraw = new uint256[](nbTokens);
+
+        for (uint256 i = 0; i < nbTokens; i = i.uncheckedInc()) {
+            uint256 tokenId = withdrawCooldownNft.tokenOfOwnerByIndex(_user, i);
+
+            ReaperERC721WithdrawCooldown.WithdrawCooldownInfo memory cooldownInfo =
+                withdrawCooldownNft.getCooldownInfo(tokenId);
+
+            tokenIds[i] = tokenId;
+            sharesToWithdraw[i] = cooldownInfo.sharesToWithdraw;
+            int256 timeLeft = int256(cooldownInfo.mintingTimestamp) + int256(cooldownPeriod) - int256(block.timestamp);
+            timeLeftBeforeWithdraw[i] = timeLeft > 0 ? uint256(timeLeft) : 0;
+
+            if (timeLeft <= 0) {
+                amountWithdrawable += cooldownInfo.sharesToWithdraw;
+            }
+        }
     }
 
     // Internal helper function to burn {_shares} of vault shares belonging to {_owner}
