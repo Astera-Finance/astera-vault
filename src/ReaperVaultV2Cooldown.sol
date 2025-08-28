@@ -225,6 +225,7 @@ contract ReaperVaultV2Cooldown is
 
     /**
      * @notice Updates the cooldown period for withdrawals.
+     * @dev This test will modify ongoing cooldown periods.
      * @param _cooldownPeriod The new cooldown period in seconds.
      */
     function updateCooldownPeriod(uint256 _cooldownPeriod) external {

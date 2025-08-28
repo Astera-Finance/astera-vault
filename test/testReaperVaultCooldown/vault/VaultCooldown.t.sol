@@ -215,5 +215,33 @@ contract VaultCooldownTest is VaultBaseTest {
         vm.stopPrank();
     }
 
-    // TODO test update cooldown period
+    function testUpdateCooldownPeriodAccessAndEffect() public {
+        uint256 initial = sut.cooldownPeriod();
+
+        // Unauthorized roles should revert
+        vm.startPrank(STRATEGIST.addr);
+        vm.expectRevert(bytes("Unauthorized access"));
+        sut.updateCooldownPeriod(2 days);
+        vm.stopPrank();
+
+        vm.startPrank(GUARDIAN.addr);
+        vm.expectRevert(bytes("Unauthorized access"));
+        sut.updateCooldownPeriod(2 days);
+        vm.stopPrank();
+
+        // Authorized: ADMIN can update
+        vm.startPrank(ADMIN.addr);
+        sut.updateCooldownPeriod(2 days);
+        vm.stopPrank();
+        assertEq(sut.cooldownPeriod(), 2 days);
+
+        // Authorized: DEFAULT_ADMIN can also update
+        vm.startPrank(DEFAULT_ADMIN.addr);
+        sut.updateCooldownPeriod(3 days);
+        vm.stopPrank();
+        assertEq(sut.cooldownPeriod(), 3 days);
+
+        // Ensure it actually changed from initial
+        assertTrue(sut.cooldownPeriod() != initial);
+    }
 }
