@@ -76,7 +76,6 @@ contract VaultCooldownTest is VaultBaseTest {
 
         uint256 userAssetBefore = assetMock.balanceOf(user);
         address nftAddr = address(nft);
-        uint256 nftSharesBefore = sut.balanceOf(nftAddr);
 
         assertEq(sut.balanceOf(nftAddr), 70e18);
 

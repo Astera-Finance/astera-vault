@@ -7,6 +7,7 @@ import {ReaperVaultV2Cooldown} from "../../../src/ReaperVaultV2Cooldown.sol";
 import {ERC20Mock} from "./mock/ERC20Mock.sol";
 import {StrategyMock} from "./mock/StrategyMock.sol";
 import {FeeControllerMock} from "./mock/FeeControllerMock.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 abstract contract VaultBaseTest is Test {
     ReaperVaultV2Cooldown internal sut;
