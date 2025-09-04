@@ -15,6 +15,7 @@ pragma solidity ^0.8.0;
  * Also note that roles are cascading. So any higher privileged role should be able to perform all the functions
  * of any lower privileged role.
  */
+bytes32 constant DEFAULT_ADMIN_ROLE = 0x00;
 bytes32 constant KEEPER = keccak256("KEEPER");
 bytes32 constant STRATEGIST = keccak256("STRATEGIST");
 bytes32 constant GUARDIAN = keccak256("GUARDIAN");

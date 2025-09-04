@@ -14,13 +14,32 @@ import {ERC20} from "oz/token/ERC20/ERC20.sol";
 import {IERC20Metadata} from "oz/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "oz/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "oz/utils/math/Math.sol";
+import {ReaperERC721WithdrawCooldown} from "./ReaperERC721WithdrawCooldown.sol";
+import {IERC721} from "oz/token/ERC721/IERC721.sol";
+import {IERC721Metadata} from "oz/token/ERC721/extensions/IERC721Metadata.sol";
 
 /**
  * @notice Implementation of a vault to deposit funds for yield optimizing.
  * This is the contract that receives funds and that users interface with.
  * The yield optimizing strategy itself is implemented in a separate 'Strategy.sol' contract.
+ *
+ * @dev This contract is a fork of ReaperVaultV2 with a cooldown mechanism added.
+ * The cooldown mechanism is implemented using an ERC721 token that is minted when a user deposits funds.
+ * The token is burned when a user withdraws funds.
+ * The token is used to track the cooldown period for each user.
+ *
+ * @dev ABI changes:
+ * - From `withdraw(uint256 _shares)` to `withdraw(uint256 _reaperERC721WithdrawCooldownId)`
+ * - New `initiateWithdraw(uint256 _shares)` function to initiate a withdraw and mint the ERC721 token.
+ * - `withdrawAll()` now burn all the ERC721 tokens of the user and withdraw the underlying assets.
  */
-contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessControlEnumerable, ReentrancyGuard {
+contract ReaperVaultV2Cooldown is
+    ReaperAccessControl,
+    ERC20,
+    IERC4626Events,
+    AccessControlEnumerable,
+    ReentrancyGuard
+{
     using ReaperMathUtils for uint256;
     using SafeERC20 for IERC20Metadata;
 
@@ -65,6 +84,9 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
 
     address public treasury; // address to whom performance fee is remitted in the form of vault shares
 
+    ReaperERC721WithdrawCooldown public withdrawCooldownNft; // ERC721 token to track withdraw cooldown
+    uint256 public cooldownPeriod; // cooldown period for withdrawals in seconds
+
     event StrategyAdded(address indexed strategy, uint256 feeBPS, uint256 allocBPS);
     event StrategyFeeBPSUpdated(address indexed strategy, uint256 feeBPS);
     event StrategyAllocBPSUpdated(address indexed strategy, uint256 allocBPS);
@@ -86,6 +108,8 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
         uint256 allocationAdded,
         uint256 allocBPS
     );
+    event CooldownPeriodUpdated(uint256 cooldownPeriod);
+    event InitiateWithdraw(address indexed user, uint256 shares, uint256 tokenId);
 
     /**
      * @notice Initializes the vault's own 'RF' token.
@@ -95,6 +119,7 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
      * @param _name the name of the vault token.
      * @param _symbol the symbol of the vault token.
      * @param _tvlCap initial deposit cap for scaling TVL safely
+     * @param _cooldownPeriod the cooldown period for withdrawals in seconds
      */
     constructor(
         address _token,
@@ -105,7 +130,8 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
         address _treasury,
         address[] memory _strategists,
         address[] memory _multisigRoles,
-        address _feeController
+        address _feeController,
+        uint256 _cooldownPeriod
     ) ERC20(string(_name), string(_symbol)) {
         token = IERC20Metadata(_token);
         constructionTime = block.timestamp;
@@ -117,6 +143,10 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
         lockedProfitDegradation = (DEGRADATION_COEFFICIENT * 46) / 10 ** 6; // 6 hours in blocks
 
         feeController = IFeeController(_feeController);
+
+        withdrawCooldownNft = new ReaperERC721WithdrawCooldown(address(this));
+        cooldownPeriod = _cooldownPeriod;
+
         uint256 numStrategists = _strategists.length;
         for (uint256 i = 0; i < numStrategists; i = i.uncheckedInc()) {
             _grantRole(STRATEGIST, _strategists[i]);
@@ -191,6 +221,17 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
         totalAllocBPS += _allocBPS;
         require(totalAllocBPS <= PERCENT_DIVISOR, "Invalid BPS value");
         emit StrategyAllocBPSUpdated(_strategy, _allocBPS);
+    }
+
+    /**
+     * @notice Updates the cooldown period for withdrawals.
+     * @dev This test will modify ongoing cooldown periods.
+     * @param _cooldownPeriod The new cooldown period in seconds.
+     */
+    function updateCooldownPeriod(uint256 _cooldownPeriod) external {
+        _atLeastRole(ADMIN);
+        cooldownPeriod = _cooldownPeriod;
+        emit CooldownPeriodUpdated(_cooldownPeriod);
     }
 
     /**
@@ -327,21 +368,105 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
         emit Deposit(msg.sender, _receiver, _amount, shares);
     }
 
+    function initiateWithdraw(uint256 _shares) external {
+        require(_shares != 0, "Invalid amount");
+        _transfer(msg.sender, address(withdrawCooldownNft), _shares);
+        uint256 tokenId = withdrawCooldownNft.safeMint(msg.sender, _shares);
+        emit InitiateWithdraw(msg.sender, _shares, tokenId);
+    }
+
     /**
-     * @dev A helper function to call withdraw() with all the sender's funds.
+     * @notice A helper function to call withdraw() with all the sender's funds.
+     * @dev Burn all the ERC721 tokens of the user and withdraw the associated underlying assets.
+     * Can be DOS by sending a lot of tokens to a user. If this happens the user can call `withdraw()` instead.
      */
     function withdrawAll() external {
-        _withdraw(balanceOf(msg.sender), msg.sender, msg.sender);
+        uint256 nbTokens = withdrawCooldownNft.balanceOf(msg.sender);
+        uint256 totalSharesToWithdraw;
+        uint256[] memory idToBurn = new uint256[](nbTokens + 1);
+        uint256 i;
+
+        for (i = 0; i < nbTokens; i = i.uncheckedInc()) {
+            uint256 tokenId = withdrawCooldownNft.tokenOfOwnerByIndex(msg.sender, i);
+            ReaperERC721WithdrawCooldown.WithdrawCooldownInfo memory cooldownInfo =
+                withdrawCooldownNft.getCooldownInfo(tokenId);
+            if (cooldownInfo.mintingTimestamp + cooldownPeriod <= block.timestamp) {
+                idToBurn[i] = tokenId;
+                totalSharesToWithdraw += cooldownInfo.sharesToWithdraw;
+            }
+        }
+
+        require(totalSharesToWithdraw != 0, "No shares to withdraw");
+        idToBurn[i] = type(uint256).max; // Flag the end of the array.
+
+        // Burn tokens in a different loop to maintain `tokenOfOwnerByIndex` unchanged.
+        for (uint256 j; idToBurn[j] != type(uint256).max; j = j.uncheckedInc()) {
+            withdrawCooldownNft.burn(idToBurn[j]);
+        }
+
+        _withdraw(totalSharesToWithdraw, msg.sender, address(withdrawCooldownNft));
     }
 
     /**
      * @notice Function to exit the system. The vault will withdraw the required tokens
      * from the strategies and pay up the token holder. A proportional number of IOU
      * tokens are burned in the process.
-     * @param _shares the number of shares to burn
+     * @param _reaperERC721WithdrawCooldownId the ID of the ERC721 withdraw cooldown token
      */
-    function withdraw(uint256 _shares) external {
-        _withdraw(_shares, msg.sender, msg.sender);
+    function withdraw(uint256 _reaperERC721WithdrawCooldownId) external {
+        require(withdrawCooldownNft.ownerOf(_reaperERC721WithdrawCooldownId) == msg.sender, "Not owner of token");
+
+        ReaperERC721WithdrawCooldown.WithdrawCooldownInfo memory cooldownInfo =
+            withdrawCooldownNft.getCooldownInfo(_reaperERC721WithdrawCooldownId);
+
+        require(cooldownInfo.mintingTimestamp + cooldownPeriod <= block.timestamp, "Cooldown period not ended");
+
+        withdrawCooldownNft.burn(_reaperERC721WithdrawCooldownId);
+        _withdraw(cooldownInfo.sharesToWithdraw, msg.sender, address(withdrawCooldownNft));
+    }
+
+    /**
+     * @notice Returns information about all withdraw cooldown tokens owned by a user
+     * @dev This function aggregates data from all ERC721 withdraw cooldown tokens owned by the user
+     * @param _user The address of the user to query
+     * @return nbTokens The number of withdraw cooldown tokens owned by the user
+     * @return amountWithdrawable The total amount of shares that can be withdrawn NOW for all tokens.
+     * @return tokenIds Array of token IDs owned by the user
+     * @return sharesToWithdraw Array of share amounts that can be withdrawn for each token
+     * @return timeLeftBeforeWithdraw Array of time remaining (in seconds) before each token can be withdrawn
+     *         Returns 0 if the cooldown period has already ended
+     */
+    function getUserWithdrawCooldownInfo(address _user)
+        external
+        view
+        returns (
+            uint256 nbTokens,
+            uint256 amountWithdrawable,
+            uint256[] memory tokenIds,
+            uint256[] memory sharesToWithdraw,
+            uint256[] memory timeLeftBeforeWithdraw
+        )
+    {
+        nbTokens = withdrawCooldownNft.balanceOf(_user);
+        tokenIds = new uint256[](nbTokens);
+        sharesToWithdraw = new uint256[](nbTokens);
+        timeLeftBeforeWithdraw = new uint256[](nbTokens);
+
+        for (uint256 i = 0; i < nbTokens; i = i.uncheckedInc()) {
+            uint256 tokenId = withdrawCooldownNft.tokenOfOwnerByIndex(_user, i);
+
+            ReaperERC721WithdrawCooldown.WithdrawCooldownInfo memory cooldownInfo =
+                withdrawCooldownNft.getCooldownInfo(tokenId);
+
+            tokenIds[i] = tokenId;
+            sharesToWithdraw[i] = cooldownInfo.sharesToWithdraw;
+            int256 timeLeft = int256(cooldownInfo.mintingTimestamp) + int256(cooldownPeriod) - int256(block.timestamp);
+            timeLeftBeforeWithdraw[i] = timeLeft > 0 ? uint256(timeLeft) : 0;
+
+            if (timeLeft <= 0) {
+                amountWithdrawable += cooldownInfo.sharesToWithdraw;
+            }
+        }
     }
 
     // Internal helper function to burn {_shares} of vault shares belonging to {_owner}
@@ -400,6 +525,7 @@ contract ReaperVaultV2 is ReaperAccessControl, ERC20, IERC4626Events, AccessCont
         _burn(_owner, _shares);
         totalIdle -= value;
         token.safeTransfer(_receiver, value);
+
         emit Withdraw(msg.sender, _receiver, _owner, value, _shares);
     }
 

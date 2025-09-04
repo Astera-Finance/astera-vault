@@ -11,10 +11,11 @@ import {UniV3Mixin} from "./mixins/UniV3Mixin.sol";
 import {ReaperAccessControl} from "./mixins/ReaperAccessControl.sol";
 import {ReaperMathUtils} from "./libraries/ReaperMathUtils.sol";
 import {STRATEGIST, GUARDIAN} from "./Roles.sol";
-import {AccessControlEnumerableUpgradeable} from "oz-upgradeable/access/AccessControlEnumerableUpgradeable.sol";
+import {AccessControlEnumerableUpgradeable} from
+    "oz-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import {UUPSUpgradeable} from "oz-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {IERC20MetadataUpgradeable} from "oz-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
-import {SafeERC20Upgradeable} from "oz-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import {IERC20Metadata} from "oz/interfaces/IERC20Metadata.sol";
+import {SafeERC20} from "oz/token/ERC20/utils/SafeERC20.sol";
 
 contract ReaperSwapper is
     UniV2Mixin,
@@ -27,7 +28,7 @@ contract ReaperSwapper is
     ISwapperSwaps
 {
     using ReaperMathUtils for uint256;
-    using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
+    using SafeERC20 for IERC20Metadata;
 
     event ChainlinkAggregatorDataUpdated(address indexed token, address indexed aggregator, uint256 timeout);
 
@@ -276,12 +277,11 @@ contract ReaperSwapper is
         uint256 toPriceTargetDigits = getChainlinkPriceTargetDigits(_to);
 
         // Get asset USD amounts in target digit precision (18 decimals)
-        uint256 fromAmountUsdTargetDigits =
-            (_amountIn * fromPriceTargetDigits) / 10 ** IERC20MetadataUpgradeable(_from).decimals();
+        uint256 fromAmountUsdTargetDigits = (_amountIn * fromPriceTargetDigits) / 10 ** IERC20Metadata(_from).decimals();
         uint256 toAmountUsdTargetDigits =
             (fromAmountUsdTargetDigits * _minAmountOutData.absoluteOrBPSValue) / PERCENT_DIVISOR;
 
-        minAmountOut = (toAmountUsdTargetDigits * 10 ** IERC20MetadataUpgradeable(_to).decimals()) / toPriceTargetDigits;
+        minAmountOut = (toAmountUsdTargetDigits * 10 ** IERC20Metadata(_to).decimals()) / toPriceTargetDigits;
     }
 
     /**
@@ -476,19 +476,19 @@ contract ReaperSwapper is
     }
 
     modifier pullFromBefore(address _from, uint256 _amount) {
-        IERC20MetadataUpgradeable(_from).safeTransferFrom(msg.sender, address(this), _amount);
+        IERC20Metadata(_from).safeTransferFrom(msg.sender, address(this), _amount);
         _;
     }
 
     modifier pushFromAndToAfter(address _from, address _to) {
         _;
-        uint256 fromBal = IERC20MetadataUpgradeable(_from).balanceOf(address(this));
+        uint256 fromBal = IERC20Metadata(_from).balanceOf(address(this));
         if (fromBal != 0) {
-            IERC20MetadataUpgradeable(_from).safeTransfer(msg.sender, fromBal);
+            IERC20Metadata(_from).safeTransfer(msg.sender, fromBal);
         }
-        uint256 toBal = IERC20MetadataUpgradeable(_to).balanceOf(address(this));
+        uint256 toBal = IERC20Metadata(_to).balanceOf(address(this));
         if (toBal != 0) {
-            IERC20MetadataUpgradeable(_to).safeTransfer(msg.sender, toBal);
+            IERC20Metadata(_to).safeTransfer(msg.sender, toBal);
         }
     }
 }

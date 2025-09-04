@@ -4,10 +4,25 @@ out = "out"
 libs = ["lib"]
 
 solc_version = "0.8.25"
-
+optimizer = true
+optimizer_runs = 800
+via_ir = true
+evm_version = "london"
 remappings = [
     "oz/=lib/openzeppelin-contracts/contracts/",
     "oz-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
+
+fs_permissions = [
+    { access = "read", path = "./script/config" },
+    { access = "read", path = "./src" },
+    { access = "read", path = "./lib" },
+    { access = "write", path = "./script/output" }
+]
+
+ffi = true
+ast = true
+build_info = true
+extra_output = ["storageLayout"]

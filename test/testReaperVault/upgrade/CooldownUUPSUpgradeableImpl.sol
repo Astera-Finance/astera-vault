@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.0;
 
-import {CooldownUUPSUpgradeable} from "../../src/mixins/upgrade/CooldownUUPSUpgradeable.sol";
+import {CooldownUUPSUpgradeable} from "../../../src/mixins/upgrade/CooldownUUPSUpgradeable.sol";
 
 contract CooldownUUPSUpgradeableImpl is CooldownUUPSUpgradeable {
     /* solhint-disable no-empty-blocks */

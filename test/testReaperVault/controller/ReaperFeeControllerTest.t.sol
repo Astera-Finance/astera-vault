@@ -2,9 +2,9 @@
 
 pragma solidity ^0.8.0;
 
-import {ReaperFeeController} from "../../src/ReaperFeeController.sol";
+import {ReaperFeeController} from "../../../src/ReaperFeeController.sol";
 import {ReaperFeeControllerV2} from "./ReaperFeeControllerV2.sol";
-import {KEEPER, STRATEGIST, GUARDIAN, ADMIN} from "../../src/Roles.sol";
+import {KEEPER, STRATEGIST, GUARDIAN, ADMIN} from "../../../src/Roles.sol";
 import {ERC1967Proxy} from "oz/proxy/ERC1967/ERC1967Proxy.sol";
 import {Test} from "forge-std/Test.sol";
 
@@ -89,7 +89,7 @@ contract ReaperFeeControllerTest is Test {
             vm.expectRevert("Unauthorized access");
 
             vm.startPrank(unauthorizedUsers[i]);
-            sut.upgradeTo(address(sutV2));
+            sut.upgradeToAndCall(address(sutV2), new bytes(0));
         }
     }
 
@@ -105,7 +105,7 @@ contract ReaperFeeControllerTest is Test {
 
             skip(sut.upgradeUnlocksAt() + 10);
 
-            sut.upgradeTo(address(sutV2));
+            sut.upgradeToAndCall(address(sutV2), new bytes(0));
 
             string memory version = sutV2.version();
             assertEq("v2", version);

@@ -66,7 +66,7 @@ abstract contract BalMixin is ISwapErrors {
             } catch {
                 // Reset allowance iff we had to increase it.
                 if (_amount > currentAllowance) {
-                    IERC20(_from).safeApprove(_vault, 0);
+                    IERC20(_from).forceApprove(_vault, 0);
                 }
                 emit SwapFailed(_vault, _amount, _minAmountOut, _from, _to);
             }
